@@ -1,0 +1,27 @@
+#python
+.venv/
+__pycache__/
+.pytest_cache/
+
+.env
+
+# 运行期产物（上传的图片等）
+backend/var/
+
+# uv init 遗留在仓库根的锁文件；后端用自己的 backend/uv.lock
+/uv.lock
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
