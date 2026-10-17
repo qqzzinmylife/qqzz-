@@ -1,7 +1,11 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, func
+from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+# 规格要求主键与外键统一 BIGINT UNSIGNED
+BigInt = BIGINT(unsigned=True)
 
 
 class Base(DeclarativeBase):
