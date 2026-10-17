@@ -1,15 +1,8 @@
 import ast
-from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import Session
-
-from app.core.config import settings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 APP_MODULES_DIR = BACKEND_DIR / "app" / "modules"
@@ -33,45 +26,20 @@ EXPECTED_TABLES = {
 }
 
 
-def _drop_everything(engine: Engine) -> None:
-    inspector = inspect(engine)
-    with engine.begin() as conn:
-        conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
-        for table in inspector.get_table_names():
-            conn.execute(text(f"DROP TABLE IF EXISTS `{table}`"))
-        conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
-
-
-@pytest.fixture(scope="module")
-def alembic_upgraded_db() -> Iterator[Session]:
-    url = settings.test_database_url
-    assert url, "TEST_DATABASE_URL 未配置"
-
-    engine = create_engine(url)
-    _drop_everything(engine)
-
-    config = Config(str(BACKEND_DIR / "alembic.ini"))
-    config.set_main_option("sqlalchemy.url", url)
-    command.upgrade(config, "head")
-
-    with Session(engine) as session:
-        yield session
-
-
-def test_initial_migration_creates_15_tables(alembic_upgraded_db: Session) -> None:
-    tables = set(inspect(alembic_upgraded_db.get_bind()).get_table_names())
+def test_initial_migration_creates_15_tables(test_engine: Engine) -> None:
+    tables = set(inspect(test_engine).get_table_names())
     # alembic_version 由 alembic 自己维护，不属于业务表
     assert tables - {"alembic_version"} == EXPECTED_TABLES
 
 
-def test_orders_amount_columns_are_exact(alembic_upgraded_db: Session) -> None:
-    cols = {c["name"] for c in inspect(alembic_upgraded_db.get_bind()).get_columns("orders")}
+def test_orders_amount_columns_are_exact(test_engine: Engine) -> None:
+    cols = {c["name"] for c in inspect(test_engine).get_columns("orders")}
     assert "total_amount" in cols
     assert {"received_amount", "refund_amount", "paid_amount", "pay_status"} & cols == set()
 
 
-def test_unique_constraints_exist(alembic_upgraded_db: Session) -> None:
-    insp = inspect(alembic_upgraded_db.get_bind())
+def test_unique_constraints_exist(test_engine: Engine) -> None:
+    insp = inspect(test_engine)
 
     def uniques(table: str) -> set[tuple[str, ...]]:
         return {tuple(uc["column_names"]) for uc in insp.get_unique_constraints(table)}
