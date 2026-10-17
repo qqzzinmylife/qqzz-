@@ -1,7 +1,6 @@
 from app.core.config import settings
 from app.core.security import create_access_token
 from app.modules.auth.models import User
-
 from tests.helpers import auth, count_rows
 
 

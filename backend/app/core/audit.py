@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import DateTime, Index, JSON, String, func
+from sqlalchemy import JSON, DateTime, Index, String, func
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base, BigInt

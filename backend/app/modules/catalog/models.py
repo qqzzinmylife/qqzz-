@@ -1,6 +1,6 @@
 from decimal import Decimal
 
-from sqlalchemy import Enum, ForeignKey, Integer, JSON, Numeric, String, Text
+from sqlalchemy import JSON, Enum, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, BigInt, TimestampMixin

@@ -80,6 +80,11 @@ def login_by_wx(db: Session, code: str) -> LoginResult:
     )
 
 
+def get_user(db: Session, user_id: int) -> User | None:
+    """按 id 取登录身份，供鉴权依赖使用。"""
+    return repository.get_by_id(db, user_id)
+
+
 def build_profile(db: Session, user: User) -> ProfileResult:
     customer_id = customer_service.find_bound_customer_id(db, user.id)
     return ProfileResult(

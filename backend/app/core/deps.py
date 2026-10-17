@@ -1,15 +1,15 @@
-from collections.abc import Iterator
 from typing import Annotated
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
 from app.core.security import decode_access_token
 from app.db.session import get_db
+from app.modules.auth import service as auth_service
 from app.modules.auth.models import User
+from app.modules.customer import service as customer_service
 from app.modules.customer.models import Customer
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -23,7 +23,7 @@ def get_current_user(
         raise AppError(ErrorCode.UNAUTHENTICATED, "未登录", status_code=401)
 
     payload = decode_access_token(credentials.credentials)
-    user = db.get(User, payload.user_id)
+    user = auth_service.get_user(db, payload.user_id)
     if user is None or user.status != "active":
         raise AppError(ErrorCode.UNAUTHENTICATED, "登录状态无效", status_code=401)
     return user
@@ -42,7 +42,7 @@ def require_bound_customer(
     if user.role != "customer":
         raise AppError(ErrorCode.FORBIDDEN, "需要客户身份", status_code=403)
 
-    customer = db.execute(select(Customer).where(Customer.user_id == user.id)).scalar_one_or_none()
+    customer = customer_service.find_bound_customer(db, user.id)
     if customer is None:
         raise AppError(ErrorCode.CUSTOMER_NOT_BOUND, "尚未绑定客户档案", status_code=403)
     return customer

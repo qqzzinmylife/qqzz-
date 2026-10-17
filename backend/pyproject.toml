@@ -18,8 +18,18 @@ dependencies = [
 dev = [
     "pytest>=8.0",
     "httpx2>=1.0",
+    "ruff>=0.6",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# 迁移脚本由 alembic 自动生成，不参与风格检查
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

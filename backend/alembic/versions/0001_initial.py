@@ -2,7 +2,7 @@
 
 Revision ID: 0001
 Revises: 
-Create Date: 2026-10-17 14:29:37.512828
+Create Date: 2026-10-17 15:22:13.644008
 
 """
 from collections.abc import Sequence
@@ -238,8 +238,6 @@ def upgrade() -> None:
     sa.Column('operator_id', mysql.BIGINT(unsigned=True), nullable=False),
     sa.Column('changed_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.Column('remark', sa.String(length=255), nullable=True),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['customer_id'], ['customer.id'], ),
     sa.ForeignKeyConstraint(['operator_id'], ['user.id'], ),
     sa.ForeignKeyConstraint(['sku_id'], ['sku.id'], ),

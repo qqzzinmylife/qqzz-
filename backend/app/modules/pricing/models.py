@@ -22,7 +22,7 @@ class CustomerPrice(Base, TimestampMixin):
     remark: Mapped[str | None] = mapped_column(String(255))
 
 
-class PriceChangeLog(Base, TimestampMixin):
+class PriceChangeLog(Base):
     """默认价与客户专属价的变更都写这里；默认价变更时 customer_id 为空。"""
 
     __tablename__ = "price_change_log"

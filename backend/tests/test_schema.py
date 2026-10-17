@@ -38,6 +38,14 @@ def test_orders_amount_columns_are_exact(test_engine: Engine) -> None:
     assert {"received_amount", "refund_amount", "paid_amount", "pay_status"} & cols == set()
 
 
+def test_price_change_log_is_append_only(test_engine: Engine) -> None:
+    """价格变更日志只追加，时间语义由 changed_at 承担，不该带 created_at/updated_at。"""
+    cols = {c["name"] for c in inspect(test_engine).get_columns("price_change_log")}
+    assert "changed_at" in cols
+    assert "created_at" not in cols
+    assert "updated_at" not in cols
+
+
 def test_unique_constraints_exist(test_engine: Engine) -> None:
     insp = inspect(test_engine)
 

@@ -1,6 +1,5 @@
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 import app.core.audit  # noqa: F401  注册 audit_log
@@ -11,6 +10,7 @@ import app.modules.catalog.models  # noqa: F401
 import app.modules.customer.models  # noqa: F401
 import app.modules.order.models  # noqa: F401
 import app.modules.pricing.models  # noqa: F401
+from alembic import context
 from app.core.config import settings
 from app.db.base import Base
 

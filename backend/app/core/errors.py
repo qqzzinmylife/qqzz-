@@ -91,7 +91,11 @@ def _is_default_status_phrase(status_code: int, detail: str) -> bool:
 
 def _http_message(exc: StarletteHTTPException) -> str:
     detail = exc.detail
-    if isinstance(detail, str) and detail and not _is_default_status_phrase(exc.status_code, detail):
+    if (
+        isinstance(detail, str)
+        and detail
+        and not _is_default_status_phrase(exc.status_code, detail)
+    ):
         return detail
     return _STATUS_MESSAGES.get(exc.status_code, _DEFAULT_STATUS_MESSAGE)
 

@@ -169,7 +169,8 @@ demo/
 
 - 引擎 InnoDB，字符集 `utf8mb4`，排序规则 `utf8mb4_0900_ai_ci`
 - 主键统一 `id BIGINT UNSIGNED AUTO_INCREMENT`
-- 每张表默认含 `created_at`、`updated_at`；`audit_log` 例外，只写不改，只有 `created_at`
+- 每张表默认含 `created_at`、`updated_at`；只写不改的日志表例外：`audit_log` 只有 `created_at`，
+  `price_change_log` 只保留业务字段 `changed_at`
 - 金额统一 `DECIMAL(12,2)`，禁止浮点类型
 - 时间统一存 Asia/Shanghai 本地时间的 `DATETIME`
 - 表名用单数；`orders` 例外，因为 `order` 是 SQL 保留字

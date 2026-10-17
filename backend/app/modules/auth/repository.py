@@ -8,6 +8,10 @@ def get_by_openid(db: Session, openid: str) -> User | None:
     return db.execute(select(User).where(User.openid == openid)).scalar_one_or_none()
 
 
+def get_by_id(db: Session, user_id: int) -> User | None:
+    return db.get(User, user_id)
+
+
 def create_user(
     db: Session,
     *,

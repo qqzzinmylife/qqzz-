@@ -1,6 +1,5 @@
-from sqlalchemy import Enum, String
+from sqlalchemy import Enum, String, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
-from sqlalchemy import select
 
 from app.db.base import Base, BigInt, TimestampMixin
 
