@@ -2,7 +2,7 @@
 
 日期：2026-10-17
 状态：待评审
-关联文档：[README](../../../README.md)、[数据库设计](../../database-design.md)
+关联文档：[README](../../../README.md)
 
 ## 一、背景与目标
 
@@ -165,24 +165,217 @@ demo/
 
 ## 八、数据模型
 
-完整字段定义见 [数据库设计](../../database-design.md)。本节只描述相对该文档的变更。
+### 设计约定
 
-### 删除四组表
+- 引擎 InnoDB，字符集 `utf8mb4`，排序规则 `utf8mb4_0900_ai_ci`
+- 主键统一 `id BIGINT UNSIGNED AUTO_INCREMENT`
+- 每张表默认含 `created_at`、`updated_at`；`audit_log` 例外，只写不改，只有 `created_at`
+- 金额统一 `DECIMAL(12,2)`，禁止浮点类型
+- 时间统一存 Asia/Shanghai 本地时间的 `DATETIME`
+- 表名用单数；`orders` 例外，因为 `order` 是 SQL 保留字
+- 单商家模式：保留 `merchant` 表（小票抬头、页面展示需要），但**不在其他表冗余 `merchant_id`**，
+  将来做多商家再加
 
-| 删除 | 理由 | 替代 |
+### 表清单（15 张）
+
+| 表名 | 作用 |
+| --- | --- |
+| `merchant` | 商家档案 |
+| `user` | 登录身份（微信 openid + 角色） |
+| `customer` | 客户档案 |
+| `customer_group` | 客户分组 |
+| `customer_address` | 客户交付地址 |
+| `product_category` | 商品分类 |
+| `product` | 商品 |
+| `sku` | 商品规格与默认价 |
+| `customer_price` | 客户专属价（按 SKU） |
+| `price_change_log` | 价格变更记录 |
+| `cart` | 购物车 |
+| `cart_item` | 购物车明细 |
+| `orders` | 订单主表（金额冻结） |
+| `order_item` | 订单明细与价格快照 |
+| `audit_log` | 操作审计日志 |
+
+### 与最初方案的差异
+
+最初的设计按「线上收款 + 票据归档」规划了 20 张表。支付功能取消后，四组表失去意义：
+
+| 不做 | 理由 | 替代 |
 | --- | --- | --- |
-| `payment` | 不记录收款明细 | `orders.received_at` + `orders.received_by` |
-| `receipt` | 小票就是订单详情页 | 订单号即小票号 |
-| `statement`、`statement_item` | 对账单是一次实时查询，不是要归档的文档 | `report` 模块实时聚合 |
-| `daily_sales_summary` | 营收直接聚合即可 | `report` 模块实时聚合，量大了再补 |
+| `payment` | 不记录收款金额、方式、退款 | `orders.received_at` + `orders.received_by` |
+| `receipt` | 小票就是订单详情页，不需要归档文件 | 订单号即小票号 |
+| `statement`、`statement_item` | 对账单是一次实时查询，不是要保存的文档 | `report` 模块实时聚合 |
+| `daily_sales_summary` | 日/周/月营收直接聚合即可 | `report` 模块实时聚合，量大了再补汇总表 |
 
-### 最终表清单（15 张）
+### merchant 商家档案
 
-`merchant`、`user`、`customer`、`customer_group`、`customer_address`、`product_category`、
-`product`、`sku`、`customer_price`、`price_change_log`、`cart`、`cart_item`、`orders`、
-`order_item`、`audit_log`。
+第一版只有一条记录，但小票抬头和页面展示需要商家名称与联系方式。
 
-### orders 最终结构
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| name | VARCHAR(100) | 商家名称 |
+| contact_name | VARCHAR(50) | 联系人 |
+| contact_phone | VARCHAR(20) | 联系电话 |
+| address | VARCHAR(255) | 经营地址 |
+| logo_url | VARCHAR(500) | 商家 Logo，可空 |
+| status | ENUM('active','disabled') | 启用状态 |
+
+### user 登录身份
+
+微信登录产生的是登录身份，不是客户档案。专属价与订单都必须挂在 `customer` 上，不挂 openid。
+第一个商家由初始化 SQL 把某个 openid 的 `role` 置为 `merchant`。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| openid | VARCHAR(64) | 微信 openid，唯一，登录凭据 |
+| unionid | VARCHAR(64) | 微信 unionid，可空 |
+| nickname | VARCHAR(64) | 微信昵称 |
+| avatar_url | VARCHAR(500) | 微信头像 |
+| phone | VARCHAR(20) | 手机号，可空 |
+| role | ENUM('customer','merchant') | 角色 |
+| status | ENUM('active','disabled') | 是否可用 |
+| last_login_at | DATETIME | 最近登录时间 |
+
+### customer 客户档案
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| name | VARCHAR(50) | 客户名称，商家可改 |
+| phone | VARCHAR(20) | 手机号，绑定审核时用于匹配已有档案 |
+| group_id | BIGINT UNSIGNED | 所属分组，可空 |
+| user_id | BIGINT UNSIGNED | 绑定的登录身份，可空 |
+| bind_status | ENUM('unbound','pending','bound','rejected') | 绑定状态 |
+| bind_applied_at | DATETIME | 申请绑定时间 |
+| credit_limit | DECIMAL(12,2) | 参考赊账额度，第一版不做强制拦截 |
+| remark | VARCHAR(255) | 商家备注，客户不可见 |
+| status | ENUM('active','disabled') | 启用状态 |
+
+### customer_group 客户分组
+
+第一版可以不用，保留给「按分组统一设价」「批量改价」这类后续能力。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| name | VARCHAR(50) | 分组名称 |
+| description | VARCHAR(255) | 描述 |
+| sort | INT | 排序 |
+| status | ENUM('active','disabled') | 启用状态 |
+
+### customer_address 交付信息
+
+地址属于客户档案，不属于登录身份。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| customer_id | BIGINT UNSIGNED | 所属客户 |
+| consignee | VARCHAR(50) | 收货人 |
+| phone | VARCHAR(20) | 联系电话 |
+| region | VARCHAR(100) | 省市区 |
+| detail | VARCHAR(255) | 详细地址 |
+| is_default | TINYINT(1) | 是否默认地址 |
+| status | ENUM('active','disabled') | 是否可用 |
+
+### product_category 商品分类
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| name | VARCHAR(50) | 分类名称 |
+| parent_id | BIGINT UNSIGNED | 上级分类，NULL 表示顶级 |
+| sort | INT | 排序 |
+| status | ENUM('active','disabled') | 是否展示 |
+
+### product 商品
+
+商品本身不存价格，价格全部下沉到 SKU，避免出现两套价格来源。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| category_id | BIGINT UNSIGNED | 所属分类 |
+| name | VARCHAR(100) | 商品名称 |
+| cover_url | VARCHAR(500) | 主图 |
+| images | JSON | 图集，有序 URL 数组 |
+| description | TEXT | 商品描述 |
+| unit | VARCHAR(20) | 单位，如 件/箱/斤 |
+| sort | INT | 排序 |
+| status | ENUM('on_sale','off_shelf') | 上架状态 |
+
+### sku 商品规格
+
+每件商品至少一个 SKU，单规格商品也建一个默认 SKU，让价格、订单、统计走同一条路径。
+修改 `default_price` 必须写 `price_change_log`。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| product_id | BIGINT UNSIGNED | 所属商品 |
+| spec_name | VARCHAR(100) | 规格名 |
+| default_price | DECIMAL(12,2) | 商品默认价，无专属价时使用 |
+| cost_price | DECIMAL(12,2) | 成本价，可空，仅商家可见 |
+| sort | INT | 排序 |
+| status | ENUM('active','disabled') | 是否可售 |
+
+### customer_price 客户专属价
+
+定价优先级「专属价 > 默认价」的落点。只存有专属价的情况，没有记录就是走默认价。
+恢复默认价 = 删除该行，历史由 `price_change_log` 保留。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| customer_id | BIGINT UNSIGNED | 客户 |
+| sku_id | BIGINT UNSIGNED | SKU |
+| price | DECIMAL(12,2) | 该客户的专属价 |
+| remark | VARCHAR(255) | 备注 |
+
+唯一索引 `(customer_id, sku_id)`，保证一个客户对一个 SKU 只有一个有效价。
+
+### price_change_log 价格变更记录
+
+默认价与客户专属价的变更都写这张表，覆盖两类改动。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| price_type | ENUM('default','customer') | 改的是默认价还是专属价 |
+| sku_id | BIGINT UNSIGNED | 涉及的 SKU |
+| customer_id | BIGINT UNSIGNED | 涉及客户，默认价变更时为空 |
+| old_price | DECIMAL(12,2) | 修改前价格，新增时为空 |
+| new_price | DECIMAL(12,2) | 修改后价格，恢复默认时为空 |
+| change_type | ENUM('create','update','reset_default') | 新增 / 修改 / 恢复默认 |
+| operator_id | BIGINT UNSIGNED | 操作人 |
+| changed_at | DATETIME | 变更时间 |
+| remark | VARCHAR(255) | 备注 |
+
+只影响之后创建的订单；已生成的订单读自己的快照，与本表无关。
+
+### cart 购物车
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| customer_id | BIGINT UNSIGNED | 所属客户，唯一 |
+| item_count | INT | 明细条数，冗余便于展示角标 |
+
+### cart_item 购物车明细
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| cart_id | BIGINT UNSIGNED | 所属购物车 |
+| sku_id | BIGINT UNSIGNED | SKU |
+| quantity | INT UNSIGNED | 数量 |
+| added_price | DECIMAL(12,2) | 加入时的展示价格 |
+
+唯一索引 `(cart_id, sku_id)`。`added_price` 仅用于展示，提交订单时后端必须重新解析价格。
+
+### orders 订单主表
 
 订单金额在下单时一次写入并冻结，之后只能改收款与交付状态，不能改金额。
 
@@ -206,16 +399,56 @@ demo/
 | cancelled_at | DATETIME NULL | 取消时间 |
 | cancel_reason | VARCHAR(255) NULL | 取消原因 |
 
-对比原设计**删除**：`received_amount`、`refund_amount`、`paid_amount`、`receivable_amount`、
-`pay_status`、`delivery_status`、`confirmed_at`、`completed_at`。
+最初设计里的 `received_amount`、`refund_amount`、`paid_amount`、`receivable_amount`、
+`pay_status`、`delivery_status`、`confirmed_at`、`completed_at` 全部取消——没有部分收款、
+没有退款，这些字段的信息量被 `received_at` 和 `status` 完全覆盖。
 
-索引：
+### order_item 订单明细与价格快照
 
-- `UNIQUE(order_no)`、`UNIQUE(idempotency_key)`
-- `INDEX(received_at)` —— 营收统计
-- `INDEX(customer_id, received_at)` —— 客户欠款
-- `INDEX(customer_id, placed_at)` —— 客户历史订单
-- `INDEX(status, placed_at)` —— 商家订单列表筛选
+小票、对账单、营收统计只读这张表的快照，不读当前价格。这是「改价不影响历史订单」的执行点。
+下单后不允许改价，所以这里没有改价相关字段。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| order_id | BIGINT UNSIGNED | 所属订单 |
+| sku_id | BIGINT UNSIGNED | 下单的 SKU |
+| product_id | BIGINT UNSIGNED | 商品 id |
+| product_name_snapshot | VARCHAR(100) | 下单时的商品名 |
+| spec_snapshot | VARCHAR(100) | 下单时的规格名 |
+| unit_price_snapshot | DECIMAL(12,2) | 成交单价快照 |
+| quantity | INT UNSIGNED | 数量 |
+| amount | DECIMAL(12,2) | 小计 = 单价 × 数量 |
+| price_source | ENUM('customer','default') | 单价来自专属价还是默认价 |
+
+### audit_log 操作审计日志
+
+只写不改，因此没有 `updated_at`。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| id | BIGINT UNSIGNED | 主键 |
+| actor_id | BIGINT UNSIGNED | 操作人 user id |
+| actor_role | VARCHAR(20) | 操作人角色 |
+| action | VARCHAR(50) | 动作 |
+| target_type | VARCHAR(50) | 目标类型 |
+| target_id | BIGINT UNSIGNED | 目标 id |
+| detail | JSON | 变更详情，含前后值与订单号列表 |
+| ip | VARCHAR(45) | 来源 IP |
+| created_at | DATETIME | 操作时间 |
+
+### 关键关系
+
+```text
+user 1---0..1 customer
+customer_group 1---n customer
+customer 1---n customer_address
+customer 1---1 cart 1---n cart_item n---1 sku
+customer 1---n customer_price n---1 sku
+customer 1---n orders 1---n order_item n---1 sku
+product 1---n sku
+product_category 1---n product
+```
 
 ### 状态表达
 
@@ -224,6 +457,15 @@ demo/
 - 欠款金额：该客户 `received_at IS NULL` 订单的 `total_amount` 之和
 - 未完成：`status <> 'cancelled' AND received_at IS NULL`
 - 已完成：`status = 'delivered' AND received_at IS NOT NULL`
+
+### 索引汇总
+
+- 唯一：`user.openid`、`customer.user_id`、`cart.customer_id`、`cart_item(cart_id, sku_id)`、
+  `customer_price(customer_id, sku_id)`、`orders.order_no`、`orders.idempotency_key`
+- 营收与欠款：`orders(received_at)`、`orders(customer_id, received_at)`
+- 订单列表：`orders(customer_id, placed_at)`、`orders(status, placed_at)`
+- 价格追溯：`price_change_log(sku_id, changed_at)`、`price_change_log(customer_id, changed_at)`
+- 审计：`audit_log(target_type, target_id)`、`audit_log(created_at)`
 
 ### audit_log 动作
 
@@ -399,13 +641,7 @@ miniprogram/
 
 前端不做自动化测试，小程序侧手工验收。
 
-## 十四、文档同步待办
-
-`docs/database-design.md` 目前仍包含已废弃的 `payment`、`receipt`、`statement`、
-`statement_item`、`daily_sales_summary` 五张表，以及 `orders` 的旧金额字段。
-实现阶段需要同步该文档，使其与第 8 节一致。
-
-## 十五、后续可选（不在第一版）
+## 十四、后续可选（不在第一版）
 
 - 收款金额记录与部分收款（升级路径：新增 `payment` 表，`orders` 增加派生金额字段）
 - 客户专属价批量导入、复制某客户价格表到另一个客户
